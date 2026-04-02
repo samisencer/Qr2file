@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>QR2File</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --border: #1e1e2e;
+    --accent: #00ff88;
+    --accent2: #ff3c6e;
+    --accent3: #3c8eff;
+    --text: #e0e0f0;
+    --muted: #5a5a7a;
+    --mono: 'Space Mono', monospace;
+    --display: 'Syne', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Animated grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,255,136,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,255,136,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 20px 16px 60px;
+  }
+
+  header {
+    text-align: center;
+    padding: 32px 0 28px;
+  }
+
+  header h1 {
+    font-family: var(--display);
+    font-size: 2.4rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--accent);
+    text-shadow: 0 0 30px rgba(0,255,136,0.4);
+  }
+
+  header h1 span {
+    color: var(--accent2);
+  }
+
+  header p {
+    font-size: 0.75rem;
+    color: var(--muted);
+    margin-top: 6px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  /* Mode tabs */
+  .tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px;
+    background: var(--border);
+    border-radius: 12px;
+    padding: 2px;
+    margin-bottom: 20px;
+  }
+
+  .tab {
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    padding: 12px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: 0.05em;
+  }
+
+  .tab.active {
+    background: var(--surface);
+    color: var(--accent);
+    box-shadow: 0 0 12px rgba(0,255,136,0.15);
+  }
+
+  /* Camera panel */
+  .panel {
+    display: none;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .panel.visible { display: flex; }
+
+  .video-wrap {
+    position: relative;
+    background: #000;
+    border-radius: 16px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    aspect-ratio: 4/3;
+  }
+
+  #video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .scan-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+  }
+
+  .scan-frame {
+    width: 60%;
+    aspect-ratio: 1;
+    border: 2px solid var(--accent);
+    border-radius: 8px;
+    box-shadow: 0 0 0 9999px rgba(0,0,0,0.35), 0 0 20px rgba(0,255,136,0.3);
+    position: relative;
+  }
+
+  .scan-line {
+    position: absolute;
+    left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    animation: scanLine 2s linear infinite;
+    top: 0;
+  }
+
+  @keyframes scanLine {
+    0% { top: 0; opacity: 1; }
+    90% { top: 100%; opacity: 1; }
+    100% { top: 100%; opacity: 0; }
+  }
+
+  .scan-corners::before,
+  .scan-corners::after,
+  .scan-frame > span::before,
+  .scan-frame > span::after {
+    content: '';
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    border-color: var(--accent2);
+    border-style: solid;
+  }
+  .scan-corners::before { top: -2px; left: -2px; border-width: 3px 0 0 3px; }
+  .scan-corners::after  { top: -2px; right: -2px; border-width: 3px 3px 0 0; }
+  .scan-frame > span::before { bottom: -2px; left: -2px; border-width: 0 0 3px 3px; }
+  .scan-frame > span::after  { bottom: -2px; right: -2px; border-width: 0 3px 3px 0; }
+
+  .camera-status {
+    position: absolute;
+    bottom: 10px;
+    left: 0; right: 0;
+    text-align: center;
+    font-size: 0.7rem;
+    color: var(--accent);
+    letter-spacing: 0.1em;
+    font-family: var(--mono);
+    text-shadow: 0 0 8px rgba(0,255,136,0.8);
+  }
+
+  #startBtn {
+    width: 100%;
+    padding: 14px;
+    background: transparent;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    letter-spacing: 0.1em;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-transform: uppercase;
+  }
+  #startBtn:hover { background: rgba(0,255,136,0.08); box-shadow: 0 0 16px rgba(0,255,136,0.2); }
+  #startBtn.running { border-color: var(--accent2); color: var(--accent2); }
+
+  /* Upload panel */
+  .upload-zone {
+    border: 2px dashed var(--border);
+    border-radius: 16px;
+    padding: 40px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.25s;
+    background: var(--surface);
+    position: relative;
+  }
+
+  .upload-zone:hover, .upload-zone.drag {
+    border-color: var(--accent3);
+    background: rgba(60,142,255,0.05);
+  }
+
+  .upload-zone input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    width: 100%;
+    height: 100%;
+  }
+
+  .upload-icon {
+    font-size: 2.5rem;
+    margin-bottom: 12px;
+    display: block;
+  }
+
+  .upload-zone p {
+    font-size: 0.8rem;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+
+  .upload-zone strong {
+    color: var(--accent3);
+    display: block;
+    font-size: 0.9rem;
+    margin-bottom: 4px;
+  }
+
+  #uploadList {
+    font-size: 0.72rem;
+    color: var(--muted);
+    margin-top: 10px;
+    text-align: left;
+    max-height: 80px;
+    overflow-y: auto;
+  }
+
+  #processBtn {
+    width: 100%;
+    padding: 14px;
+    background: linear-gradient(135deg, rgba(60,142,255,0.2), rgba(60,142,255,0.05));
+    border: 1px solid var(--accent3);
+    color: var(--accent3);
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    letter-spacing: 0.1em;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-transform: uppercase;
+  }
+  #processBtn:hover { background: rgba(60,142,255,0.12); }
+
+  /* Progress */
+  .progress-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 18px;
+  }
+
+  .progress-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+
+  .progress-header span:first-child { color: var(--muted); }
+  .progress-header span:last-child { color: var(--accent); font-weight: 700; }
+
+  .progress-bar-bg {
+    background: var(--border);
+    border-radius: 4px;
+    height: 6px;
+    overflow: hidden;
+    margin-bottom: 12px;
+  }
+
+  .progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), #00ccff);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+    width: 0%;
+    box-shadow: 0 0 8px rgba(0,255,136,0.5);
+  }
+
+  .parts-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .part-dot {
+    width: 24px;
+    height: 24px;
+    border-radius: 5px;
+    background: var(--border);
+    border: 1px solid transparent;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.55rem;
+    color: var(--muted);
+    transition: all 0.2s;
+    font-family: var(--mono);
+  }
+
+  .part-dot.ok {
+    background: rgba(0,255,136,0.15);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .part-dot.dup {
+    background: rgba(255,200,0,0.1);
+    border-color: #ffcc00;
+    color: #ffcc00;
+  }
+
+  /* Log */
+  .log {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px;
+    font-size: 0.68rem;
+    color: var(--muted);
+    max-height: 120px;
+    overflow-y: auto;
+    line-height: 1.7;
+    font-family: var(--mono);
+  }
+
+  .log .ok   { color: var(--accent); }
+  .log .err  { color: var(--accent2); }
+  .log .info { color: var(--accent3); }
+  .log .dup  { color: #ffcc00; }
+
+  /* Result */
+  .result-card {
+    background: linear-gradient(135deg, rgba(0,255,136,0.08), rgba(0,255,136,0.02));
+    border: 1px solid var(--accent);
+    border-radius: 14px;
+    padding: 20px;
+    text-align: center;
+    display: none;
+    flex-direction: column;
+    gap: 14px;
+    animation: popIn 0.3s cubic-bezier(0.34,1.56,0.64,1);
+  }
+
+  @keyframes popIn {
+    from { transform: scale(0.9); opacity: 0; }
+    to   { transform: scale(1);   opacity: 1; }
+  }
+
+  .result-card.visible { display: flex; }
+
+  .result-card h3 {
+    font-family: var(--display);
+    font-size: 1.2rem;
+    color: var(--accent);
+  }
+
+  .result-info {
+    font-size: 0.72rem;
+    color: var(--muted);
+    line-height: 1.8;
+  }
+
+  .result-preview {
+    max-width: 100%;
+    max-height: 200px;
+    border-radius: 8px;
+    object-fit: contain;
+    border: 1px solid var(--border);
+  }
+
+  .result-text-preview {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    font-size: 0.7rem;
+    color: var(--text);
+    text-align: left;
+    max-height: 150px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+
+  .btn-download {
+    display: inline-block;
+    padding: 13px 24px;
+    background: var(--accent);
+    color: #000;
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-decoration: none;
+    border-radius: 10px;
+    border: none;
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: all 0.2s;
+    text-align: center;
+  }
+  .btn-download:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,255,136,0.35); }
+
+  .btn-reset {
+    background: transparent;
+    border: 1px solid var(--muted);
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    padding: 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    transition: all 0.2s;
+  }
+  .btn-reset:hover { border-color: var(--accent2); color: var(--accent2); }
+
+  /* Flash effect on successful scan */
+  .flash {
+    animation: flashAnim 0.25s ease;
+  }
+  @keyframes flashAnim {
+    0%   { box-shadow: 0 0 0 0 rgba(0,255,136,0); }
+    50%  { box-shadow: 0 0 0 8px rgba(0,255,136,0.4); }
+    100% { box-shadow: 0 0 0 0 rgba(0,255,136,0); }
+  }
+
+  .hidden { display: none !important; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <h1>QR<span>2</span>FILE</h1>
+    <p>Multi-part QR · Base64 Decoder</p>
+  </header>
+
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('camera')">📷 Canlı Kamera</button>
+    <button class="tab" onclick="switchTab('upload')">🖼 Fotoğraf Yükle</button>
+  </div>
+
+  <!-- CAMERA PANEL -->
+  <div class="panel visible" id="panelCamera">
+    <div class="video-wrap" id="videoWrap">
+      <video id="video" playsinline autoplay muted></video>
+      <div class="scan-overlay">
+        <div class="scan-frame scan-corners">
+          <div class="scan-line"></div>
+          <span></span>
+        </div>
+      </div>
+      <div class="camera-status" id="camStatus">● HAZIR — BAŞLAT'A BAS</div>
+    </div>
+    <button id="startBtn" onclick="toggleCamera()">▶ Kamerayı Başlat</button>
+  </div>
+
+  <!-- UPLOAD PANEL -->
+  <div class="panel" id="panelUpload">
+    <div class="upload-zone" id="dropZone">
+      <input type="file" id="fileInput" accept="image/*" multiple onchange="handleFiles(this.files)">
+      <span class="upload-icon">📂</span>
+      <strong>Fotoğraf(lar) Seç</strong>
+      <p>PNG, JPG, JPEG desteklenir<br>Birden fazla seçebilirsin</p>
+      <div id="uploadList"></div>
+    </div>
+    <button id="processBtn" onclick="processUploadedFiles()">⚡ QR Kodlarını İşle</button>
+  </div>
+
+  <!-- PROGRESS -->
+  <div class="progress-card" id="progressCard" style="margin-top:14px; display:none;">
+    <div class="progress-header">
+      <span>Parçalar</span>
+      <span id="progressText">0 / ?</span>
+    </div>
+    <div class="progress-bar-bg">
+      <div class="progress-bar-fill" id="progressFill"></div>
+    </div>
+    <div class="parts-grid" id="partsGrid"></div>
+  </div>
+
+  <!-- LOG -->
+  <div class="log" id="log" style="margin-top:14px;"></div>
+
+  <!-- RESULT -->
+  <div class="result-card" id="resultCard" style="margin-top:14px;">
+    <h3>✅ Dosya Hazır</h3>
+    <div class="result-info" id="resultInfo"></div>
+    <img id="resultImg" class="result-preview hidden" alt="önizleme">
+    <div id="resultTextPreview" class="result-text-preview hidden"></div>
+    <a id="downloadLink" class="btn-download">⬇ İndir</a>
+    <button class="btn-reset" onclick="resetAll()">↺ Yeni Dosya</button>
+  </div>
+
+</div>
+
+<script>
+// ─── State ───────────────────────────────────────────────────────────────────
+const state = {
+  parts: {},
+  expectedTotal: null,
+  scanning: false,
+  stream: null,
+  scanInterval: null,
+  uploadedFiles: [],
+  lastCode: null,
+  lastCodeTime: 0
+};
+
+// ─── Tab switch ───────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', (i===0 && tab==='camera') || (i===1 && tab==='upload')));
+  document.getElementById('panelCamera').classList.toggle('visible', tab==='camera');
+  document.getElementById('panelUpload').classList.toggle('visible', tab==='upload');
+  if (tab !== 'camera' && state.scanning) stopCamera();
+}
+
+// ─── Logging ─────────────────────────────────────────────────────────────────
+function addLog(msg, type='') {
+  const log = document.getElementById('log');
+  const line = document.createElement('div');
+  if (type) line.className = type;
+  line.textContent = `[${new Date().toLocaleTimeString('tr-TR')}] ${msg}`;
+  log.appendChild(line);
+  log.scrollTop = log.scrollHeight;
+}
+
+// ─── QR Parse ────────────────────────────────────────────────────────────────
+// Expected format: PART\(\d{4})/(\d{4})\|(.*)
+function parsePayload(data) {
+  const m = data.match(/^PART\((\d+)\/(\d+)\)\|(.+)$/s);
+  if (!m) return null;
+  return { partNo: parseInt(m[1]), total: parseInt(m[2]), chunk: m[3] };
+}
+
+// ─── Process a decoded QR string ─────────────────────────────────────────────
+function processQRData(data) {
+  const parsed = parsePayload(data);
+  if (!parsed) {
+    addLog(`QR formatı tanınmadı`, 'err');
+    return false;
+  }
+
+  const { partNo, total, chunk } = parsed;
+
+  if (state.expectedTotal === null) {
+    state.expectedTotal = total;
+    addLog(`Toplam parça: ${total}`, 'info');
+    initProgressUI(total);
+  }
+
+  if (state.parts[partNo] !== undefined) {
+    addLog(`Parça ${partNo} zaten alındı — atlanıyor`, 'dup');
+    markDot(partNo, 'dup');
+    return false;
+  }
+
+  state.parts[partNo] = chunk;
+  addLog(`✓ Parça ${partNo}/${total} alındı`, 'ok');
+  markDot(partNo, 'ok');
+  updateProgress();
+
+  if (Object.keys(state.parts).length === state.expectedTotal) {
+    reconstructFile();
+    return true;
+  }
+  return false;
+}
+
+// ─── Progress UI ─────────────────────────────────────────────────────────────
+function initProgressUI(total) {
+  const grid = document.getElementById('partsGrid');
+  grid.innerHTML = '';
+  for (let i = 1; i <= total; i++) {
+    const dot = document.createElement('div');
+    dot.className = 'part-dot';
+    dot.textContent = i;
+    dot.id = `dot-${i}`;
+    grid.appendChild(dot);
+  }
+  document.getElementById('progressCard').style.display = 'block';
+}
+
+function markDot(n, cls) {
+  const d = document.getElementById(`dot-${n}`);
+  if (d) d.className = `part-dot ${cls}`;
+}
+
+function updateProgress() {
+  const count = Object.keys(state.parts).length;
+  const total = state.expectedTotal || 1;
+  document.getElementById('progressText').textContent = `${count} / ${total}`;
+  document.getElementById('progressFill').style.width = `${Math.round(count/total*100)}%`;
+}
+
+// ─── Reconstruct ─────────────────────────────────────────────────────────────
+function reconstructFile() {
+  stopCamera();
+  addLog('Tüm parçalar tamam — dosya oluşturuluyor...', 'info');
+
+  const sorted = Object.keys(state.parts).map(Number).sort((a,b)=>a-b);
+  const b64 = sorted.map(k => state.parts[k]).join('');
+
+  let binary;
+  try {
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    binary = bytes;
+  } catch(e) {
+    addLog('Base64 decode hatası: ' + e.message, 'err');
+    return;
+  }
+
+  const mime = detectMime(binary);
+  const ext  = mimeToExt(mime);
+  const blob = new Blob([binary], { type: mime });
+  const url  = URL.createObjectURL(blob);
+  const filename = `recovered_${Date.now()}.${ext}`;
+
+  // Download link
+  const dl = document.getElementById('downloadLink');
+  dl.href = url;
+  dl.download = filename;
+  dl.textContent = `⬇ İndir — ${filename}`;
+
+  // Info
+  document.getElementById('resultInfo').innerHTML =
+    `Boyut: <b>${formatBytes(binary.length)}</b> &nbsp;·&nbsp; Format: <b>${mime}</b> &nbsp;·&nbsp; Parça: <b>${sorted.length}</b>`;
+
+  // Preview
+  const img = document.getElementById('resultImg');
+  const txt = document.getElementById('resultTextPreview');
+  if (mime.startsWith('image/')) {
+    img.src = url;
+    img.classList.remove('hidden');
+    txt.classList.add('hidden');
+  } else if (mime.startsWith('text/') || mime === 'application/json') {
+    const decoder = new TextDecoder();
+    txt.textContent = decoder.decode(binary).slice(0, 2000);
+    txt.classList.remove('hidden');
+    img.classList.add('hidden');
+  } else {
+    img.classList.add('hidden');
+    txt.classList.add('hidden');
+  }
+
+  document.getElementById('resultCard').classList.add('visible');
+  addLog(`🎉 Dosya hazır: ${filename} (${formatBytes(binary.length)})`, 'ok');
+}
+
+// ─── Magic bytes ─────────────────────────────────────────────────────────────
+function detectMime(bytes) {
+  const h = bytes;
+  if (h[0]===0xFF && h[1]===0xD8) return 'image/jpeg';
+  if (h[0]===0x89 && h[1]===0x50) return 'image/png';
+  if (h[0]===0x47 && h[1]===0x49) return 'image/gif';
+  if (h[0]===0x52 && h[1]===0x49 && h[8]===0x57) return 'image/webp';
+  if (h[0]===0x25 && h[1]===0x50 && h[2]===0x44) return 'application/pdf';
+  if (h[0]===0x50 && h[1]===0x4B) return 'application/zip';
+  // Try text
+  try {
+    const sample = new TextDecoder('utf-8', {fatal:true}).decode(bytes.slice(0,512));
+    if (sample.trim().startsWith('{') || sample.trim().startsWith('[')) return 'application/json';
+    return 'text/plain';
+  } catch { return 'application/octet-stream'; }
+}
+
+function mimeToExt(mime) {
+  const map = {
+    'image/jpeg':'jpg','image/png':'png','image/gif':'gif','image/webp':'webp',
+    'application/pdf':'pdf','application/zip':'zip',
+    'application/json':'json','text/plain':'txt','application/octet-stream':'bin'
+  };
+  return map[mime] || 'bin';
+}
+
+function formatBytes(n) {
+  if (n < 1024) return n + ' B';
+  if (n < 1024*1024) return (n/1024).toFixed(1) + ' KB';
+  return (n/1024/1024).toFixed(2) + ' MB';
+}
+
+// ─── CAMERA ──────────────────────────────────────────────────────────────────
+async function toggleCamera() {
+  if (state.scanning) { stopCamera(); return; }
+
+  const btn = document.getElementById('startBtn');
+  try {
+    state.stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+    });
+    const video = document.getElementById('video');
+    video.srcObject = state.stream;
+    await video.play();
+
+    state.scanning = true;
+    btn.textContent = '⏹ Kamerayı Durdur';
+    btn.classList.add('running');
+    document.getElementById('camStatus').textContent = '● TARAMA AKTIF';
+
+    state.scanInterval = setInterval(scanFrame, 200);
+    addLog('Kamera başlatıldı', 'info');
+  } catch(e) {
+    addLog('Kamera erişim hatası: ' + e.message, 'err');
+  }
+}
+
+function stopCamera() {
+  if (state.scanInterval) { clearInterval(state.scanInterval); state.scanInterval = null; }
+  if (state.stream) { state.stream.getTracks().forEach(t => t.stop()); state.stream = null; }
+  state.scanning = false;
+  const btn = document.getElementById('startBtn');
+  btn.textContent = '▶ Kamerayı Başlat';
+  btn.classList.remove('running');
+  document.getElementById('camStatus').textContent = '● DURDURULDU';
+}
+
+function scanFrame() {
+  const video = document.getElementById('video');
+  if (!video.videoWidth) return;
+
+  const canvas = document.createElement('canvas');
+  canvas.width  = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+  const imgData = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+  const code = jsQR(imgData.data, canvas.width, canvas.height, { inversionAttempts: 'dontInvert' });
+
+  if (code) {
+    const now = Date.now();
+    // Debounce same QR
+    if (code.data === state.lastCode && now - state.lastCodeTime < 1500) return;
+    state.lastCode = code.data;
+    state.lastCodeTime = now;
+
+    // Flash
+    document.getElementById('videoWrap').classList.add('flash');
+    setTimeout(() => document.getElementById('videoWrap').classList.remove('flash'), 300);
+
+    processQRData(code.data);
+  }
+}
+
+// ─── FILE UPLOAD ─────────────────────────────────────────────────────────────
+function handleFiles(files) {
+  state.uploadedFiles = Array.from(files);
+  const list = document.getElementById('uploadList');
+  list.innerHTML = state.uploadedFiles.map(f => `📄 ${f.name}`).join('<br>');
+  addLog(`${files.length} dosya seçildi`, 'info');
+}
+
+// Drag & drop
+const dz = document.getElementById('dropZone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
+dz.addEventListener('drop', e => {
+  e.preventDefault();
+  dz.classList.remove('drag');
+  handleFiles(e.dataTransfer.files);
+});
+
+async function processUploadedFiles() {
+  if (!state.uploadedFiles.length) { addLog('Önce dosya seç!', 'err'); return; }
+  const total = state.uploadedFiles.length;
+  addLog(`${total} resim işleniyor...`, 'info');
+
+  const btn = document.getElementById('processBtn');
+  btn.disabled = true;
+
+  for (let i = 0; i < total; i++) {
+    btn.textContent = `⏳ İşleniyor ${i+1}/${total}...`;
+    // yield to UI thread before each file
+    await new Promise(r => setTimeout(r, 30));
+    await decodeImageFile(state.uploadedFiles[i]);
+  }
+
+  btn.textContent = '⚡ QR Kodlarını İşle';
+  btn.disabled = false;
+}
+
+function decodeImageFile(file) {
+  return new Promise(resolve => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      // UI'ye nefes aldır
+      setTimeout(() => {
+        try {
+          // Maks 1024px — jsQR için yeterli, bellek için güvenli
+          const MAX = 1024;
+          let w = img.naturalWidth;
+          let h = img.naturalHeight;
+          if (w > MAX || h > MAX) {
+            const ratio = Math.min(MAX/w, MAX/h);
+            w = Math.round(w * ratio);
+            h = Math.round(h * ratio);
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width  = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, w, h);
+          const imgData = ctx.getImageData(0, 0, w, h);
+          URL.revokeObjectURL(url);
+
+          const code = jsQR(imgData.data, w, h, { inversionAttempts: 'attemptBoth' });
+
+          if (code) {
+            addLog(`${file.name} → QR bulundu`, 'ok');
+            processQRData(code.data);
+          } else {
+            addLog(`${file.name} → QR bulunamadı`, 'err');
+          }
+        } catch(e) {
+          addLog(`${file.name} → hata: ${e.message}`, 'err');
+        }
+        resolve();
+      }, 30); // her dosya arası 30ms — UI güncellensin
+    };
+    img.onerror = () => { addLog(`${file.name} yüklenemedi`, 'err'); resolve(); };
+    img.src = url;
+  });
+}
+
+// ─── Reset ────────────────────────────────────────────────────────────────────
+function resetAll() {
+  state.parts = {};
+  state.expectedTotal = null;
+  state.lastCode = null;
+  state.lastCodeTime = 0;
+  state.uploadedFiles = [];
+
+  document.getElementById('progressCard').style.display = 'none';
+  document.getElementById('partsGrid').innerHTML = '';
+  document.getElementById('progressFill').style.width = '0%';
+  document.getElementById('progressText').textContent = '0 / ?';
+  document.getElementById('log').innerHTML = '';
+  document.getElementById('resultCard').classList.remove('visible');
+  document.getElementById('uploadList').innerHTML = '';
+  document.getElementById('fileInput').value = '';
+  addLog('Sıfırlandı — yeni dosyaya hazır', 'info');
+}
+</script>
+</body>
+</html>
